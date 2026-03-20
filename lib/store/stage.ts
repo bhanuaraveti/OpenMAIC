@@ -34,6 +34,22 @@ function debounce<T extends (...args: Parameters<T>) => ReturnType<T>>(
   };
 }
 
+/** Fire-and-forget server sync — persists stage + scenes to disk via API */
+async function syncToServer(stage: Stage, scenes: Scene[]): Promise<void> {
+  try {
+    const res = await fetch('/api/classroom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage, scenes }),
+    });
+    if (!res.ok) {
+      log.warn('Server sync failed:', res.status);
+    }
+  } catch (error) {
+    log.warn('Server sync error (non-fatal):', error);
+  }
+}
+
 type ToolbarState = 'design' | 'ai';
 
 interface StageState {
@@ -262,6 +278,8 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
         currentSceneId,
         chats,
       });
+      // Fire-and-forget server sync to persist to disk
+      syncToServer(stage, scenes);
     } catch (error) {
       log.error('Failed to save to storage:', error);
     }
