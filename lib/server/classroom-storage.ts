@@ -34,11 +34,20 @@ export function buildRequestOrigin(req: NextRequest): string {
     : req.nextUrl.origin;
 }
 
+export interface PersistedPlaybackState {
+  sceneIndex: number;
+  actionIndex: number;
+  consumedDiscussions: string[];
+  sceneId?: string;
+  updatedAt: string;
+}
+
 export interface PersistedClassroomData {
   id: string;
   stage: Stage;
   scenes: Scene[];
   createdAt: string;
+  playbackState?: PersistedPlaybackState;
 }
 
 export function isValidClassroomId(id: string): boolean {
@@ -63,6 +72,7 @@ export async function persistClassroom(
     id: string;
     stage: Stage;
     scenes: Scene[];
+    playbackState?: PersistedPlaybackState;
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
@@ -71,6 +81,7 @@ export async function persistClassroom(
     stage: data.stage,
     scenes: data.scenes,
     createdAt: new Date().toISOString(),
+    playbackState: data.playbackState,
   };
 
   await ensureClassroomsDir();

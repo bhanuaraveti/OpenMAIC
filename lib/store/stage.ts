@@ -34,13 +34,28 @@ function debounce<T extends (...args: Parameters<T>) => ReturnType<T>>(
   };
 }
 
-/** Fire-and-forget server sync — persists stage + scenes to disk via API */
-async function syncToServer(stage: Stage, scenes: Scene[]): Promise<void> {
+import type { PlaybackSnapshot } from '@/lib/playback/types';
+
+/** Playback state shape for server persistence */
+interface ServerPlaybackState {
+  sceneIndex: number;
+  actionIndex: number;
+  consumedDiscussions: string[];
+  sceneId?: string;
+  updatedAt: string;
+}
+
+/** Fire-and-forget server sync — persists stage + scenes + optional playback state to disk via API */
+async function syncToServer(
+  stage: Stage,
+  scenes: Scene[],
+  playbackState?: ServerPlaybackState,
+): Promise<void> {
   try {
     const res = await fetch('/api/classroom', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage, scenes }),
+      body: JSON.stringify({ stage, scenes, playbackState }),
     });
     if (!res.ok) {
       log.warn('Server sync failed:', res.status);
@@ -49,6 +64,27 @@ async function syncToServer(stage: Stage, scenes: Scene[]): Promise<void> {
     log.warn('Server sync error (non-fatal):', error);
   }
 }
+
+/** Debounced playback progress sync (2s) — saves to IndexedDB + server */
+export const debouncedPlaybackSync = debounce((snapshot: PlaybackSnapshot) => {
+  // Access store lazily at call time (store is defined later in this module)
+  const { stage, scenes } = useStageStoreBase.getState();
+  if (!stage?.id) return;
+
+  // Save to IndexedDB
+  import('@/lib/utils/playback-storage').then(({ savePlaybackState }) => {
+    savePlaybackState(stage.id, snapshot);
+  });
+
+  // Sync to server with playback state
+  syncToServer(stage, scenes, {
+    sceneIndex: snapshot.sceneIndex,
+    actionIndex: snapshot.actionIndex,
+    consumedDiscussions: snapshot.consumedDiscussions,
+    sceneId: snapshot.sceneId,
+    updatedAt: new Date().toISOString(),
+  });
+}, 2000);
 
 type ToolbarState = 'design' | 'ai';
 

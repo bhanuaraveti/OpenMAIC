@@ -44,12 +44,22 @@ export default function ClassroomDetailPage() {
           if (res.ok) {
             const json = await res.json();
             if (json.success && json.classroom) {
-              const { stage, scenes } = json.classroom;
+              const { stage, scenes, playbackState } = json.classroom;
               useStageStore.getState().setStage(stage);
               useStageStore.setState({
                 scenes,
                 currentSceneId: scenes[0]?.id ?? null,
               });
+              // Restore server-side playback state to IndexedDB so the engine picks it up
+              if (playbackState) {
+                const { savePlaybackState } = await import('@/lib/utils/playback-storage');
+                await savePlaybackState(stage.id, {
+                  sceneIndex: playbackState.sceneIndex,
+                  actionIndex: playbackState.actionIndex,
+                  consumedDiscussions: playbackState.consumedDiscussions,
+                  sceneId: playbackState.sceneId,
+                });
+              }
               log.info('Loaded from server-side storage:', classroomId);
             }
           }
