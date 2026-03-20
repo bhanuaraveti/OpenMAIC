@@ -10,12 +10,13 @@ import { SceneSidebar } from './stage/scene-sidebar';
 import { Header } from './header';
 import { CanvasArea } from '@/components/canvas/canvas-area';
 import { Roundtable } from '@/components/roundtable';
-import { PlaybackEngine, computePlaybackView } from '@/lib/playback';
+import { PlaybackEngine, computePlaybackView, computeCourseProgress } from '@/lib/playback';
 import type { EngineMode, TriggerEvent, Effect } from '@/lib/playback';
 import { ActionEngine } from '@/lib/action/engine';
 import { createAudioPlayer } from '@/lib/utils/audio-player';
 import type { Action, DiscussionAction, SpeechAction } from '@/lib/types/action';
-// Playback state persistence removed — refresh always starts from the beginning
+import { loadPlaybackState, clearPlaybackState } from '@/lib/utils/playback-storage';
+import { debouncedPlaybackSync } from '@/lib/store/stage';
 import { ChatArea, type ChatAreaRef } from '@/components/chat/chat-area';
 import { agentsToParticipants, useAgentRegistry } from '@/lib/orchestration/registry/store';
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
@@ -64,6 +65,7 @@ export function Stage({
   const [liveSpeech, setLiveSpeech] = useState<string | null>(null); // From buffer (discussion/QA)
   const [speechProgress, setSpeechProgress] = useState<number | null>(null); // StreamBuffer reveal progress (0–1)
   const [discussionTrigger, setDiscussionTrigger] = useState<TriggerEvent | null>(null);
+  const [courseProgress, setCourseProgress] = useState<number | undefined>(undefined);
 
   // Speaking agent tracking (Issue 2)
   const [speakingAgentId, setSpeakingAgentId] = useState<string | null>(null);
@@ -354,11 +356,28 @@ export function Stage({
         return ids.includes(agentId);
       },
       getPlaybackSpeed: () => useSettingsStore.getState().playbackSpeed || 1,
+      onProgress: (snapshot) => {
+        debouncedPlaybackSync(snapshot);
+        const allScenes = useStageStore.getState().scenes;
+        const curSceneId = useStageStore.getState().currentSceneId;
+        const globalSceneIndex = allScenes.findIndex((s) => s.id === curSceneId);
+        if (globalSceneIndex >= 0) {
+          const progress = computeCourseProgress(allScenes, globalSceneIndex, snapshot.actionIndex);
+          setCourseProgress(progress.percentage);
+        }
+      },
       onComplete: () => {
         // lectureSpeech intentionally NOT cleared — last sentence stays visible
         // until scene transition (auto-play) or user restarts. Scene change
         // effect handles the reset.
         setPlaybackCompleted(true);
+
+        // Mark progress as 100% and clear saved state
+        setCourseProgress(100);
+        const stageId = useStageStore.getState().stage?.id;
+        if (stageId) {
+          clearPlaybackState(stageId);
+        }
 
         // End lecture session on playback complete
         if (lectureSessionIdRef.current) {
@@ -417,7 +436,15 @@ export function Stage({
         engine.start();
       })();
     } else {
-      // Load saved playback state and restore position (but never auto-play).
+      // Restore saved playback position (but never auto-play)
+      (async () => {
+        const stageId = useStageStore.getState().stage?.id;
+        if (!stageId) return;
+        const snapshot = await loadPlaybackState(stageId);
+        if (snapshot && snapshot.sceneId === currentScene?.id && engine === engineRef.current) {
+          engine.restoreFromSnapshot(snapshot);
+        }
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Only re-run when scene changes, functions are stable refs
   }, [currentScene]);
@@ -685,7 +712,7 @@ export function Stage({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
         {/* Header */}
-        <Header currentSceneTitle={currentScene?.title || ''} />
+        <Header currentSceneTitle={currentScene?.title || ''} progress={courseProgress} />
 
         {/* Canvas Area */}
         <div

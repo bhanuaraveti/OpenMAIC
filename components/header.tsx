@@ -24,9 +24,10 @@ import { useExportPPTX } from '@/lib/export/use-export-pptx';
 
 interface HeaderProps {
   readonly currentSceneTitle: string;
+  readonly progress?: number; // 0-100, undefined = hidden
 }
 
-export function Header({ currentSceneTitle }: HeaderProps) {
+export function Header({ currentSceneTitle, progress }: HeaderProps) {
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
@@ -81,7 +82,7 @@ export function Header({ currentSceneTitle }: HeaderProps) {
 
   return (
     <>
-      <header className="h-20 px-8 flex items-center justify-between z-10 bg-transparent gap-4">
+      <header className="h-20 px-8 flex items-center justify-between z-10 bg-transparent gap-4 relative">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             onClick={() => router.push('/')}
@@ -294,6 +295,14 @@ export function Header({ currentSceneTitle }: HeaderProps) {
             </div>
           )}
         </div>
+        {progress !== undefined && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/30">
+            <div
+              className="h-full bg-primary transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
       </header>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
