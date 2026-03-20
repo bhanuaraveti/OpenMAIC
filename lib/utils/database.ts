@@ -342,40 +342,118 @@ export async function clearDatabase(): Promise<void> {
   log.info('Database cleared');
 }
 
+/** Convert a Blob to a base64 data URL for JSON serialization */
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `data:${blob.type};base64,${btoa(binary)}`;
+}
+
+/** Convert a base64 data URL back to a Blob */
+function base64ToBlob(dataUrl: string): Blob {
+  const [header, b64] = dataUrl.split(',');
+  const mime = header.match(/data:(.*?);/)?.[1] || 'application/octet-stream';
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+// Serialized types for JSON export (Blob fields become base64 strings)
+interface SerializedAudioFile extends Omit<AudioFileRecord, 'blob'> { blob: string }
+interface SerializedImageFile extends Omit<ImageFileRecord, 'blob'> { blob: string }
+interface SerializedMediaFile extends Omit<MediaFileRecord, 'blob' | 'poster'> { blob: string; poster?: string }
+
 /**
- * Export database contents (for backup)
+ * Export database contents (for backup), including media as base64
  */
 export async function exportDatabase(): Promise<{
   stages: StageRecord[];
   scenes: SceneRecord[];
   chatSessions: ChatSessionRecord[];
   playbackState: PlaybackStateRecord[];
+  stageOutlines: StageOutlinesRecord[];
+  generatedAgents: GeneratedAgentRecord[];
+  audioFiles: SerializedAudioFile[];
+  imageFiles: SerializedImageFile[];
+  mediaFiles: SerializedMediaFile[];
 }> {
-  return {
-    stages: await db.stages.toArray(),
-    scenes: await db.scenes.toArray(),
-    chatSessions: await db.chatSessions.toArray(),
-    playbackState: await db.playbackState.toArray(),
-  };
+  const [stages, scenes, chatSessions, playbackState, stageOutlines, generatedAgents, audioFilesRaw, imageFilesRaw, mediaFilesRaw] =
+    await Promise.all([
+      db.stages.toArray(),
+      db.scenes.toArray(),
+      db.chatSessions.toArray(),
+      db.playbackState.toArray(),
+      db.stageOutlines.toArray(),
+      db.generatedAgents.toArray(),
+      db.audioFiles.toArray(),
+      db.imageFiles.toArray(),
+      db.mediaFiles.toArray(),
+    ]);
+
+  const audioFiles: SerializedAudioFile[] = await Promise.all(
+    audioFilesRaw.map(async (f) => ({ ...f, blob: await blobToBase64(f.blob) })),
+  );
+  const imageFiles: SerializedImageFile[] = await Promise.all(
+    imageFilesRaw.map(async (f) => ({ ...f, blob: await blobToBase64(f.blob) })),
+  );
+  const mediaFiles: SerializedMediaFile[] = await Promise.all(
+    mediaFilesRaw.map(async (f) => ({
+      ...f,
+      blob: await blobToBase64(f.blob),
+      poster: f.poster ? await blobToBase64(f.poster) : undefined,
+    })),
+  );
+
+  return { stages, scenes, chatSessions, playbackState, stageOutlines, generatedAgents, audioFiles, imageFiles, mediaFiles };
 }
 
 /**
- * Import database contents (for restoring backups)
+ * Import database contents (for restoring backups), including media from base64
  */
 export async function importDatabase(data: {
   stages?: StageRecord[];
   scenes?: SceneRecord[];
   chatSessions?: ChatSessionRecord[];
   playbackState?: PlaybackStateRecord[];
+  stageOutlines?: StageOutlinesRecord[];
+  generatedAgents?: GeneratedAgentRecord[];
+  audioFiles?: SerializedAudioFile[];
+  imageFiles?: SerializedImageFile[];
+  mediaFiles?: SerializedMediaFile[];
 }): Promise<void> {
   await db.transaction(
     'rw',
-    [db.stages, db.scenes, db.chatSessions, db.playbackState],
+    [db.stages, db.scenes, db.chatSessions, db.playbackState, db.stageOutlines, db.generatedAgents, db.audioFiles, db.imageFiles, db.mediaFiles],
     async () => {
       if (data.stages) await db.stages.bulkPut(data.stages);
       if (data.scenes) await db.scenes.bulkPut(data.scenes);
       if (data.chatSessions) await db.chatSessions.bulkPut(data.chatSessions);
       if (data.playbackState) await db.playbackState.bulkPut(data.playbackState);
+      if (data.stageOutlines) await db.stageOutlines.bulkPut(data.stageOutlines);
+      if (data.generatedAgents) await db.generatedAgents.bulkPut(data.generatedAgents);
+      if (data.audioFiles) {
+        const restored = data.audioFiles.map((f) => ({ ...f, blob: base64ToBlob(f.blob) }));
+        await db.audioFiles.bulkPut(restored);
+      }
+      if (data.imageFiles) {
+        const restored = data.imageFiles.map((f) => ({ ...f, blob: base64ToBlob(f.blob) }));
+        await db.imageFiles.bulkPut(restored);
+      }
+      if (data.mediaFiles) {
+        const restored = data.mediaFiles.map((f) => ({
+          ...f,
+          blob: base64ToBlob(f.blob),
+          poster: f.poster ? base64ToBlob(f.poster) : undefined,
+        }));
+        await db.mediaFiles.bulkPut(restored);
+      }
     },
   );
   log.info('Database imported successfully');

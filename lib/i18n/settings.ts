@@ -541,6 +541,16 @@ export const settingsZhCN = {
     clearCacheButton: '永久删除所有数据',
     clearCacheSuccess: '缓存已清空，页面即将刷新',
     clearCacheFailed: '清空缓存失败，请重试',
+    // Data backup
+    dataBackup: '数据备份',
+    exportData: '导出数据',
+    exportDataDescription: '将所有课堂、场景和对话数据导出为 JSON 文件。',
+    exportSuccess: '数据导出成功',
+    exportFailed: '数据导出失败，请重试',
+    importData: '导入数据',
+    importDataDescription: '从 JSON 备份文件中恢复数据。现有数据将被合并。',
+    importSuccess: '数据导入成功，页面即将刷新',
+    importFailed: '数据导入失败，请检查文件格式',
     // Web Search settings
     webSearchSettings: '网络搜索',
     webSearchApiKey: 'Tavily API Key',
@@ -1132,6 +1142,16 @@ export const settingsEnUS = {
     clearCacheButton: 'Permanently Delete All Data',
     clearCacheSuccess: 'Cache cleared, page will refresh shortly',
     clearCacheFailed: 'Failed to clear cache, please try again',
+    // Data backup
+    dataBackup: 'Data Backup',
+    exportData: 'Export Data',
+    exportDataDescription: 'Download all classrooms, scenes, and chat data as a JSON file.',
+    exportSuccess: 'Data exported successfully',
+    exportFailed: 'Failed to export data, please try again',
+    importData: 'Import Data',
+    importDataDescription: 'Restore data from a JSON backup file. Existing data will be merged.',
+    importSuccess: 'Data imported successfully, page will refresh shortly',
+    importFailed: 'Failed to import data, please check the file format',
     // Web Search settings
     webSearchSettings: 'Web Search',
     webSearchApiKey: 'Tavily API Key',

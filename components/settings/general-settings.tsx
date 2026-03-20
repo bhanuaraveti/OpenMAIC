@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -13,9 +13,9 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Loader2, Trash2, AlertTriangle, Download, Upload } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
-import { clearDatabase } from '@/lib/utils/database';
+import { clearDatabase, exportDatabase, importDatabase } from '@/lib/utils/database';
 import { toast } from 'sonner';
 import { createLogger } from '@/lib/logger';
 
@@ -28,6 +28,11 @@ export function GeneralSettings() {
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [confirmInput, setConfirmInput] = useState('');
   const [clearing, setClearing] = useState(false);
+
+  // Export/Import state
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const confirmPhrase = t('settings.clearCacheConfirmPhrase');
   const isConfirmValid = confirmInput === confirmPhrase;
@@ -56,6 +61,49 @@ export function GeneralSettings() {
     }
   }, [isConfirmValid, t]);
 
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const data = await exportDatabase();
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `openmaic-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(t('settings.exportSuccess'));
+    } catch (error) {
+      log.error('Failed to export database:', error);
+      toast.error(t('settings.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  }, [t]);
+
+  const handleImport = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setImporting(true);
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        await importDatabase(data);
+        toast.success(t('settings.importSuccess'));
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (error) {
+        log.error('Failed to import database:', error);
+        toast.error(t('settings.importFailed'));
+      } finally {
+        setImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    },
+    [t],
+  );
+
   const clearCacheItems =
     t('settings.clearCacheConfirmItems').split('、').length > 1
       ? t('settings.clearCacheConfirmItems').split('、')
@@ -63,6 +111,43 @@ export function GeneralSettings() {
 
   return (
     <div className="flex flex-col gap-8">
+      {/* Data Backup */}
+      <div className="rounded-xl border bg-card p-4 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-md bg-primary/10 text-primary">
+            <Download className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-semibold">{t('settings.dataBackup')}</h3>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium">{t('settings.exportData')}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              {t('settings.exportDataDescription')}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={handleExport} disabled={exporting}>
+            {exporting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+            {t('settings.exportData')}
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium">{t('settings.importData')}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              {t('settings.importDataDescription')}
+            </p>
+          </div>
+          <input type="file" accept=".json" ref={fileInputRef} onChange={handleImport} className="hidden" />
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+            {importing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+            {t('settings.importData')}
+          </Button>
+        </div>
+      </div>
+
       {/* Danger Zone - Clear Cache */}
       <div className="relative rounded-xl border border-destructive/30 bg-destructive/[0.03] dark:bg-destructive/[0.06] overflow-hidden">
         {/* Subtle diagonal stripe pattern for danger emphasis */}
